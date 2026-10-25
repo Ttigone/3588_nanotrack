@@ -24,8 +24,6 @@ typedef struct {
 
 #define PI 3.1415926
 
-using namespace cv;
-
 struct Config {
     std::string windowing = "cosine";
     std::vector<float> window;
@@ -83,7 +81,7 @@ private:
     std::vector<float> grid_to_search_x;
     std::vector<float> grid_to_search_y;
     std::vector<float> window;
-    float *zf_data_transpose;
+    float *zf_data_transpose = nullptr;
     rknn_output zf[1];
     
 };

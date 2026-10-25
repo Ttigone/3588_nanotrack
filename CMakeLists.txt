@@ -1,96 +1,84 @@
 cmake_minimum_required(VERSION 3.10)
+project(nanotrack_cpp CXX C)
 
-project(nanotrack_cpp)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# if (ENABLE_ASAN)
-# 	message(STATUS "BUILD WITH ADDRESS SANITIZER")
-# 	set (CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
-# 	set (CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
-# 	set (CMAKE_LINKER_FLAGS_DEBUG "${CMAKE_LINKER_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
-# endif ()
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release)
+endif()
 
-#-fPIC
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC")
-set(CMAKE_CXX_FLAGS"${CMAKE_CXX_FLAGS} -fPIC")
-#set(CMAKE_BUILD_TYPE "Debug")
-#################################################################pyb
-# set(MY_PYBIND ${CMAKE_SOURCE_DIR}/pybind11)
-# add_subdirectory(${MY_PYBIND})
-# set(DEMO_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp
-#     ${CMAKE_CURRENT_SOURCE_DIR}/postprocess.cc
-#     ${CMAKE_CURRENT_SOURCE_DIR}/yolov6.cc
-#     ${CMAKE_CURRENT_SOURCE_DIR}/mat_warper.cpp
-# )
-                
-# # add demo module
-# pybind11_add_module(${PROJECT_NAME} ${DEMO_SOURCES})
-#################################################################pyb
+#################################################################
+# 第三方库：全部指向项目内 3rdparty，不走系统查找，
+# 避免交叉编译时 find_package 误链到主机 x86 的库。
+# 均可用 -D<变量名>=<路径> 覆盖。
+#################################################################
+set(THIRD_PARTY_DIR "${CMAKE_SOURCE_DIR}/3rdparty" CACHE PATH "第三方库根目录")
 
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/ 3rdparty.out)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/utils/ utils.out)
-set(CMAKE_INSTALL_RPATH "./lib")
+# rknn runtime
+set(RKNN_API_DIR "${THIRD_PARTY_DIR}/rknpu2"           CACHE PATH "rknn runtime 目录")
+set(RKNN_LIB     "${RKNN_API_DIR}/Linux/aarch64/librknnrt.so")
 
+# rga
+set(RGA_DIR      "${THIRD_PARTY_DIR}/librga"           CACHE PATH "rga 目录")
+set(RGA_LIB      "${RGA_DIR}/Linux/aarch64/librga.so")
 
-include_directories(include)
-# opencv
-find_package(OpenCV REQUIRED)
+# eigen（仅头文件）
+set(EIGEN_DIR    "${THIRD_PARTY_DIR}/eigen"            CACHE PATH "Eigen 根目录（其下为 Eigen/）")
 
-# set rknn api path
-set(RKNN_API_PATH ${CMAKE_SOURCE_DIR}/3rdparty/rknpu2)
-# set lib arch
-set(LIB_ARCH aarch64)
-# set rknn rt lib
-set(RKNN_RT_LIB ${RKNN_API_PATH}/Linux/${LIB_ARCH}/librknnrt.so)
-include_directories(${RKNN_API_PATH}/include)
+# opencv：支持三种常见预编译目录结构
+#   1) <dir>/OpenCVConfig.cmake                        （cmake/opencv4 目录）
+#   2) <dir>/lib/cmake/opencv4/OpenCVConfig.cmake      （sysroot/rootfs 安装布局）
+#   3) <dir>/share/OpenCV/OpenCVConfig.cmake           （rknn model zoo 的 opencv-linux-aarch64）
+set(OPENCV_ROOT  "${THIRD_PARTY_DIR}/opencv"           CACHE PATH "OpenCV 预编译根目录")
 
-# set rga path
-set(RGA_PATH ${CMAKE_SOURCE_DIR}/3rdparty/librga)
-# set rga lib
-set(LIB_ARCH aarch64)
-set(RGA_LIB ${RGA_PATH}/Linux/${LIB_ARCH}/librga.so)
-include_directories( ${RGA_PATH}/include)
+foreach(_cv_cfg "${OPENCV_ROOT}" "${OPENCV_ROOT}/lib/cmake/opencv4" "${OPENCV_ROOT}/share/OpenCV")
+    if(EXISTS "${_cv_cfg}/OpenCVConfig.cmake")
+        set(OpenCV_DIR "${_cv_cfg}" CACHE PATH "OpenCVConfig.cmake 所在目录" FORCE)
+        break()
+    endif()
+endforeach()
 
-#eigen
-find_package(Eigen3 REQUIRED)
-include_directories(${EIGEN3_INCLUDE_DIR})
+foreach(_lib "${RKNN_LIB}" "${RGA_LIB}")
+    if(NOT EXISTS "${_lib}")
+        message(FATAL_ERROR "缺少依赖库: ${_lib}\n请把对应文件放入 3rdparty 后重试")
+    endif()
+endforeach()
 
+if(NOT EXISTS "${EIGEN_DIR}/Eigen")
+    message(FATAL_ERROR "缺少 Eigen: ${EIGEN_DIR}/Eigen 不存在")
+endif()
 
-#################################################################exe
+find_package(OpenCV REQUIRED CONFIG PATHS "${OpenCV_DIR}" NO_DEFAULT_PATH)
+
+find_package(Threads REQUIRED)
+
+#################################################################
+# 可执行文件
+#################################################################
 add_executable(${PROJECT_NAME}
     demo_rknn.cpp
     nanotrack.cpp
 )
-#################################################################exe
-target_link_libraries(${PROJECT_NAME} PRIVATE
-    imageutils
-    fileutils
-    imagedrawing    
-    dl
-)
-
-# link rga lib
-target_link_libraries(${PROJECT_NAME}  PRIVATE ${RGA_LIB})
-# link rknn rt lib
-target_link_libraries(${PROJECT_NAME}  PRIVATE ${RKNN_RT_LIB})
-# link opencv libraries
-target_link_libraries(${PROJECT_NAME}  PRIVATE  ${OpenCV_LIBS})
-# link eigen
-target_link_libraries(${PROJECT_NAME}  PRIVATE  ${EIGEN3_LIBS})
-message(STATUS "!!!!!!!!!!!CMAKE_SYSTEM_NAME: ${CMAKE_SYSTEM_NAME}")
-if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    set(THREADS_PREFER_PTHREAD_FLAG ON)
-    find_package(Threads REQUIRED)
-    target_link_libraries(${PROJECT_NAME}  PRIVATE Threads::Threads)
-endif()
 
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${LIBRKNNRT_INCLUDES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/utils
+    ${RKNN_API_DIR}/include
+    ${RGA_DIR}/include
+    ${EIGEN_DIR}
+    ${OpenCV_INCLUDE_DIRS}
 )
 
-#target_compile_definitions(${PROJECT_NAME} PRIVATE VERSION_INFO=${EXAMPLE_VERSION_INFO} PUBLIC)
-#install(TARGETS ${PROJECT_NAME} DESTINATION ${CMAKE_SOURCE_DIR}/)
-#install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/../model/bus.jpg DESTINATION model)
-#install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/../model/coco_80_labels_list.txt DESTINATION model)
-#file(GLOB RKNN_FILES "${CMAKE_CURRENT_SOURCE_DIR}/../model/*.rknn")
-#install(FILES ${RKNN_FILES} DESTINATION model)
+target_link_libraries(${PROJECT_NAME} PRIVATE
+    ${RKNN_LIB}
+    ${RGA_LIB}
+    ${OpenCV_LIBS}
+    Threads::Threads
+    dl
+)
+
+# 运行时优先在当前目录的 lib/ 下找动态库
+set(CMAKE_INSTALL_RPATH "$ORIGIN/lib")

@@ -150,9 +150,9 @@ NanoTrack::NanoTrack()
     create_window();
 
     int model_size_back_127_t, model_size_back_255_x, model_size_head;
-    unsigned char *back_127_t = load_model("/home/orangepi/Desktop/NanoTrack-master/rknn/backbone_127_q.rknn", &model_size_back_127_t);
-    unsigned char *back_255_x = load_model("/home/orangepi/Desktop/NanoTrack-master/rknn/backbone_255_q.rknn", &model_size_back_255_x);
-    unsigned char *head = load_model("/home/orangepi/Desktop/NanoTrack-master/rknn/head.rknn", &model_size_head);
+    unsigned char *back_127_t = load_model("/home/ftp/nanotrack/backbone_127_q.rknn", &model_size_back_127_t);
+    unsigned char *back_255_x = load_model("/home/ftp/nanotrack/backbone_255_q.rknn", &model_size_back_255_x);
+    unsigned char *head = load_model("/home/ftp/nanotrack/head.rknn", &model_size_head);
     int ret;
     ret = rknn_init(&app_ctx_backbone_t.rknn_ctx, back_127_t, model_size_back_127_t, 0, nullptr);
     if (ret < 0) {
